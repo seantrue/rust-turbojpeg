@@ -164,6 +164,19 @@ fn build_vendor(link_kind: LinkKind) -> Result<Library> {
         cmake.configure_arg("-DREQUIRE_SIMD=ON");
     }
 
+    // On MSVC, libjpeg-turbo forces the static C run-time (/MT, LIBCMT) unless WITH_CRT_DLL is
+    // on, which clashes with the DLL run-time Rust links by default (LNK4098). Take Rust's: the
+    // DLL run-time unless the target has crt-static. (As honzasp/rust-turbojpeg#43 proposes.)
+    if env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") {
+        let crt_static = env::var("CARGO_CFG_TARGET_FEATURE")
+            .is_ok_and(|features| features.split(',').any(|f| f == "crt-static"));
+        cmake.define("WITH_CRT_DLL", "ON");
+        cmake.define(
+            "CMAKE_MSVC_RUNTIME_LIBRARY",
+            if crt_static { "MultiThreaded" } else { "MultiThreadedDLL" },
+        );
+    }
+
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
     if target_os == "android" {
         let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
